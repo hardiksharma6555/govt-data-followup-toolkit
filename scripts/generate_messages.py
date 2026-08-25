@@ -26,6 +26,25 @@ def load_csv(path: Path):
         return list(csv.DictReader(f))
 
 
+def build_summary(per_class: dict) -> str:
+    """One-line, comma-separated summary of what's missing - used as a single
+    template parameter for the Cloud API path (approved templates can't
+    contain arbitrary multi-line free text, only fixed {{n}} placeholders)."""
+    bits = []
+    for klass, cats in per_class.items():
+        missing, incomplete = cats["missing"], cats["incomplete"]
+        parts = []
+        if missing:
+            parts.append(f"missing: {', '.join(missing)}")
+        if incomplete:
+            parts.append(f"incomplete: {', '.join(incomplete)}")
+        if not parts:
+            continue
+        prefix = f"Class {klass.strip()} - " if klass and klass.strip() else ""
+        bits.append(prefix + "; ".join(parts))
+    return " | ".join(bits)
+
+
 def build_message(principal_name: str, school_raw: str, task_label: str, per_class: dict) -> str:
     lines = [f"Namaste {principal_name} ji,"]
     lines.append(
@@ -95,17 +114,20 @@ def main():
                     "mobile_raw": mobile,
                 })
                 continue
+            principal_name = contact["principal_name"] or "Sir/Madam"
             messages.append({
                 "school_raw": school_raw,
-                "principal_name": contact["principal_name"] or "Sir/Madam",
+                "principal_name": principal_name,
                 "mobile": mobile,
                 "match_type": match_type,
-                "message": build_message(contact["principal_name"] or "Sir/Madam", school_raw, args.task_label, per_class),
+                "task_label": args.task_label,
+                "summary": build_summary(per_class),
+                "message": build_message(principal_name, school_raw, args.task_label, per_class),
             })
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     for name, rows, fields in [
-        ("whatsapp_messages.csv", messages, ["school_raw", "principal_name", "mobile", "match_type", "message"]),
+        ("whatsapp_messages.csv", messages, ["school_raw", "principal_name", "mobile", "match_type", "task_label", "summary", "message"]),
         ("unmatched_schools.csv", unmatched, ["school_raw", "school_norm"]),
         ("no_contact_schools.csv", no_contact, ["school_raw", "principal_name", "mobile_raw"]),
     ]:

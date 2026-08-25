@@ -41,6 +41,18 @@ writes another. Run them one at a time and inspect the output before moving
 to the next - nothing sends a message until you explicitly run the last
 stage with `--live`.
 
+The last stage has two interchangeable implementations, same input file,
+same idempotent logging:
+- **Option A** - `send_whatsapp.py`: drives a real browser via Selenium,
+  logged into your actual WhatsApp/WhatsApp Business account. Zero setup
+  beyond scanning a QR code, but carries WhatsApp ToS/account-risk exposure.
+- **Option B** - `send_whatsapp_cloud_api.py`: uses Meta's official Cloud
+  API. No ban risk, works headlessly, but needs one-time Meta Developer
+  setup and an approved message template. See "Option B" below.
+
+Quick Start below uses Option A since it needs no external account. Skip
+straight to "Option B" if you'd rather set up the Cloud API from the start.
+
 ## Requirements
 
 - Python 3.9+
@@ -179,10 +191,89 @@ skipped - it will never double-send. Useful flags:
 | `--daily-cap` | `40` | max sends per calendar day before it stops itself |
 | `--profile-dir` | `scripts/chrome_profile` | where the WhatsApp Web login is cached |
 
-## WhatsApp ToS and account-risk warning
+## Option B: WhatsApp Cloud API (no browser, no ban risk)
 
-This drives WhatsApp Web the same way a human clicking through the UI would
-- there is no official API involved. WhatsApp's terms of service prohibit
+`send_whatsapp.py` drives a real browser and carries real account-ban risk
+(see the warning below). `scripts/send_whatsapp_cloud_api.py` is a drop-in
+alternative that uses Meta's official, sanctioned API instead - no Chrome,
+no session to babysit, safe to run on a server or cron job. The trade-off:
+more one-time setup, and messages must use a **pre-approved template**
+rather than arbitrary free text.
+
+### One-time setup (do this yourself in your browser - takes ~15-20 minutes)
+
+1. Go to **developers.facebook.com** and log in with a Facebook account (a
+   personal account is fine to start).
+2. **My Apps > Create App > select "Business"** as the app type. Give it any
+   name (e.g. "School Data Followup").
+3. In the app dashboard, find **WhatsApp** in the product list and click
+   **Set up**. Meta automatically provisions:
+   - A **free test phone number** (Meta's, not yours - fine for now)
+   - A temporary 24-hour access token
+   - A **Phone Number ID** and **WhatsApp Business Account ID**
+   These all appear on the **WhatsApp > API Setup** page - keep this tab open.
+4. Still on that page, under **"To"**, click **Manage phone number list** and
+   add up to 5 real phone numbers you want to test with (your own, a
+   colleague's). Each gets a verification code via WhatsApp/SMS - enter it
+   to confirm. **Test mode only sends to numbers verified here.**
+5. Create the message template: **WhatsApp Manager > Message Templates >
+   Create Template**.
+   - Category: **Utility** (this is a transactional reminder, not marketing -
+     utility templates are cheaper and reviewed faster than marketing ones)
+   - Name: `school_data_reminder` (or anything - just match it in `.env`)
+   - Body text, with placeholders exactly like this:
+     ```
+     Namaste {{1}} ji, this is regarding {{2}} for {{3}}. Our records show
+     the following details have not been filled in yet: {{4}}. Kindly
+     complete and submit the pending details at the earliest. Thank you.
+     ```
+   - Submit for review. Straightforward utility templates like this are
+     usually approved within minutes to a few hours.
+6. Once approved, generate a **longer-lived token** instead of the 24-hour
+   default: **Business Settings > Users > System Users > Add** a system
+   user, assign it the app with `whatsapp_business_messaging` permission,
+   then **Generate Token** (choose an expiry - up to 60 days, or
+   non-expiring for a fully verified business).
+7. Copy `.env.example` to `.env` and fill in the four values from steps 3-6:
+   ```bash
+   cp .env.example .env
+   ```
+
+### Running it
+
+```bash
+pip install -r requirements.txt   # includes no new deps - stdlib only
+
+python3 scripts/send_whatsapp_cloud_api.py                # dry run - prints the payload, sends nothing
+python3 scripts/send_whatsapp_cloud_api.py --live --limit 1   # send to your first test recipient
+python3 scripts/send_whatsapp_cloud_api.py --live              # send to all pending
+```
+
+Same idempotency guarantee as `send_whatsapp.py`: every attempt is logged to
+`output/send_log_cloud_api.csv` by phone number, reruns skip anything
+already `sent`.
+
+**Going from test mode to production** (sending to anyone, not just your 5
+verified test numbers) requires completing **Business Verification**:
+**Business Settings > Security Center > Start Verification** - needs
+business documents (in India, typically GST certificate or business PAN).
+This can take a few days to a couple of weeks; there's no need to wait for
+it before testing everything else in this pipeline.
+
+**If your approved template has a different shape** than the 4-placeholder
+one above, use `--template-params` to map your own CSV columns to your
+template's `{{1}} {{2}} ...` in order, e.g.:
+```bash
+python3 scripts/send_whatsapp_cloud_api.py --template-params principal_name,school_raw,summary
+```
+
+## WhatsApp ToS and account-risk warning (Option A: `send_whatsapp.py`)
+
+This section applies to the Selenium/browser path only - Option B (Cloud
+API) is the officially sanctioned method and carries none of this risk.
+
+`send_whatsapp.py` drives WhatsApp Web the same way a human clicking through
+the UI would - there is no official API involved. WhatsApp's terms of service prohibit
 bulk/automated messaging, and accounts sending many messages in a short
 window (especially to numbers that haven't messaged you first) can be
 rate-limited or banned. The delay/cap defaults exist to reduce that risk,
@@ -191,17 +282,15 @@ not eliminate it. Recommendations:
 - Test on your own number or a colleague's first (see Quick Start).
 - Keep `--daily-cap` low, especially for the first few runs.
 - Don't drop the randomized delay to zero.
-- Consider whether the official [WhatsApp Business Cloud
-  API](https://developers.facebook.com/docs/whatsapp/cloud-api) is a better
-  fit if you need this at real scale or need guaranteed delivery - it
-  requires business verification and template approval, but carries no
-  account-ban risk.
+- If you need this at real scale or need guaranteed delivery, use **Option B
+  (Cloud API)** above instead - no account-ban risk.
 
 ## Privacy
 
 - `.gitignore` excludes every real data file (`data/*.xlsx`, `data/*.csv`
-  other than the `sample_*` files), all of `output/`, and
+  other than the `sample_*` files), all of `output/`,
   `scripts/chrome_profile/` (your live WhatsApp session - treat it like a
+  password), and `.env` (your Cloud API access token - also treat it like a
   password). Don't force-add these.
 - Never commit real names or phone numbers to this or any repo, private or
   public - repo visibility can change, and git history is hard to fully

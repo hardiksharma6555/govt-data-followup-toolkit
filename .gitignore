@@ -8,6 +8,9 @@ data/*.csv
 # WhatsApp session - this is your live login, equivalent to a password.
 scripts/chrome_profile/
 
+# Cloud API credentials - never commit real tokens.
+.env
+
 # Generated output - contains real names/numbers/message logs once you run this for real.
 # (scripts create this directory automatically, no need to track it)
 output/
