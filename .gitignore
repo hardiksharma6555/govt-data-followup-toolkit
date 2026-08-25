@@ -1,0 +1,22 @@
+# Real data - master contact lists and criteria files you supply locally.
+# NEVER commit real names/phone numbers. Only data/sample_*.{csv,xlsx} (synthetic) is tracked.
+data/*.xlsx
+data/*.csv
+!data/sample_*.xlsx
+!data/sample_*.csv
+
+# WhatsApp session - this is your live login, equivalent to a password.
+scripts/chrome_profile/
+
+# Generated output - contains real names/numbers/message logs once you run this for real.
+# (scripts create this directory automatically, no need to track it)
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
